@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -15,7 +16,8 @@ class ProjectSetup:
         self.server_process = None
         self.url_opened = False
         self.template_commands = {
-            "React": ["npm", "create", "vite@latest", str(self.project_dir), "--", "--template", "react"]
+            "React": ["npm", "create", "vite@latest", str(self.project_dir), "--", "--template", "react"],
+            "Flask": ["python", "-m", "venv", str(self.project_dir / "venv")]
         }
 
     def _get_project_name(self):
@@ -48,26 +50,23 @@ class ProjectSetup:
         with open(self.error_log, 'a') as f:
             f.write(f"ERROR: {message}\n")
 
-    def _monitor_process(self, process, success_message=None):
-        output_buffer = []
+    def _monitor_output(self, process, success_message):
+        url_pattern = re.compile(r'(Local:\s+(https?://\S+)|(Running on\s+(https?://\S+))')
+        print(success_message)
+        
         while True:
             output = process.stdout.readline()
             if output:
-                clean_output = output.strip()
-                output_buffer.append(clean_output)
-                print(clean_output)
+                print(output.strip())
+                if not self.url_opened:
+                    match = url_pattern.search(output)
+                    if match:
+                        url = match.group(2) or match.group(4)
+                        print(f"\n🌐 Opening {url} in browser...")
+                        webbrowser.open(url)
+                        self.url_opened = True
             if process.poll() is not None:
-                remaining = process.stdout.read()
-                if remaining:
-                    print(remaining.strip())
-                    output_buffer.append(remaining.strip())
                 break
-            time.sleep(0.1)
-        
-        success = process.returncode == 0
-        if success and success_message:
-            print(f"\n✅ {success_message}")
-        return success, '\n'.join(output_buffer)
 
     def setup_project(self):
         try:
@@ -93,7 +92,8 @@ class ProjectSetup:
 
         process = self._run_command(cmd, cwd=Path.cwd())
         if process:
-            return self._monitor_process(process, "Project template created")[0]
+            self._monitor_output(process, "Creating project template...")
+            return process.returncode == 0
         return False
 
     def _merge_files(self):
@@ -115,35 +115,41 @@ class ProjectSetup:
             print("✓ Dependencies already installed")
             return True
 
-        cmd = ["npm", "install", "--legacy-peer-deps"]
-        process = self._run_command(cmd + self.config['dependencies'], cwd=self.project_dir)
+        cmd = ["npm", "install", "--legacy-peer-deps"] + self.config['dependencies']
+        process = self._run_command(cmd, cwd=self.project_dir)
         
         if process:
-            success, _ = self._monitor_process(process, "Dependencies installed")
-            return success
+            self._monitor_output(process, "Installing dependencies...")
+            return process.returncode == 0
         return False
 
     def _start_application(self):
         print("\n⚡ Starting application...")
-        cmd = ["npm", "run", "dev"]
-        self.server_process = self._run_command(cmd, cwd=self.project_dir)
         
+        if self.config['project_type'] == "React":
+            cmd = ["npm", "run", "dev"]
+        elif self.config['project_type'] == "Flask":
+            venv_python = self.project_dir / "venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            cmd = [str(venv_python), "-m", "flask", "run"]
+        else:
+            return False
+
+        self.server_process = self._run_command(cmd, cwd=self.project_dir)
         if not self.server_process:
             return False
 
         threading.Thread(target=self._monitor_server_output, daemon=True).start()
-        print("\nPress Ctrl+C to stop the server...")
+        print("\n🛑 Press Ctrl+C to stop the server...")
 
         try:
             self.server_process.wait()
         except KeyboardInterrupt:
             self.server_process.terminate()
-            print("\n🛑 Server stopped")
-        
+            print("\nServer stopped")
         return True
 
     def _monitor_server_output(self):
-        url_pattern = re.compile(r'(Local|Network):\s+(https?://\S+)')
+        url_pattern = re.compile(r'(Local:\s+(https?://\S+)|(Running on\s+(https?://\S+))')
         while True:
             output = self.server_process.stdout.readline()
             if output:
@@ -151,7 +157,7 @@ class ProjectSetup:
                 if not self.url_opened:
                     match = url_pattern.search(output)
                     if match:
-                        url = match.group(2)
+                        url = match.group(2) or match.group(4)
                         print(f"\n🌐 Opening {url} in browser...")
                         webbrowser.open(url)
                         self.url_opened = True
