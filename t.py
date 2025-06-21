@@ -53,7 +53,7 @@ class ProjectSetup:
     def _monitor_output(self, process, success_message):
         url_pattern = re.compile(r'(Local:\s+(https?://\S+)|(Running on\s+(https?://\S+))')
         print(success_message)
-        
+
         while True:
             output = process.stdout.readline()
             if output:
@@ -62,7 +62,7 @@ class ProjectSetup:
                     match = url_pattern.search(output)
                     if match:
                         url = match.group(2) or match.group(4)
-                        print(f"\n🌐 Opening {url} in browser...")
+                        print(f"\nOpening application in browser: {url}")
                         webbrowser.open(url)
                         self.url_opened = True
             if process.poll() is not None:
@@ -77,7 +77,7 @@ class ProjectSetup:
             if not self._install_dependencies():
                 return False
 
-            print("\n✅ Setup completed successfully!")
+            print("\nProject setup completed successfully.")
             print(f"Project directory: {self.project_dir}")
             return self._start_application()
         except Exception as e:
@@ -85,47 +85,47 @@ class ProjectSetup:
             return False
 
     def _create_template(self):
-        print(f"\n🚀 Creating {self.config['project_type']} project...")
+        print(f"\nCreating {self.config['project_type']} project...")
         cmd = self.template_commands.get(self.config['project_type'])
         if not cmd:
             return False
 
         process = self._run_command(cmd, cwd=Path.cwd())
         if process:
-            self._monitor_output(process, "Creating project template...")
+            self._monitor_output(process, "Generating project template...")
             return process.returncode == 0
         return False
 
     def _merge_files(self):
-        print("\n📂 Merging custom files...")
+        print("\nCopying configuration files into project...")
         self.project_dir.mkdir(parents=True, exist_ok=True)
         for rel_path, content in self.config['files'].items():
             full_path = self.project_dir / rel_path
             full_path.parent.mkdir(parents=True, exist_ok=True)
             with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(content.replace(';', ';\n'))
-            print(f"✓ Updated {rel_path}")
+            print(f"Updated: {rel_path}")
 
     def _install_dependencies(self):
-        print("\n🔧 Installing dependencies...")
+        print("\nInstalling dependencies...")
         if not self.config.get('dependencies'):
             return True
 
         if (self.project_dir / "node_modules").exists():
-            print("✓ Dependencies already installed")
+            print("Dependencies already installed.")
             return True
 
         cmd = ["npm", "install", "--legacy-peer-deps"] + self.config['dependencies']
         process = self._run_command(cmd, cwd=self.project_dir)
-        
+
         if process:
-            self._monitor_output(process, "Installing dependencies...")
+            self._monitor_output(process, "Installing required packages...")
             return process.returncode == 0
         return False
 
     def _start_application(self):
-        print("\n⚡ Starting application...")
-        
+        print("\nLaunching development server...")
+
         if self.config['project_type'] == "React":
             cmd = ["npm", "run", "dev"]
         elif self.config['project_type'] == "Flask":
@@ -139,13 +139,13 @@ class ProjectSetup:
             return False
 
         threading.Thread(target=self._monitor_server_output, daemon=True).start()
-        print("\n🛑 Press Ctrl+C to stop the server...")
+        print("\nPress Ctrl+C to stop the server.")
 
         try:
             self.server_process.wait()
         except KeyboardInterrupt:
             self.server_process.terminate()
-            print("\nServer stopped")
+            print("\nServer has been stopped.")
         return True
 
     def _monitor_server_output(self):
@@ -158,7 +158,7 @@ class ProjectSetup:
                     match = url_pattern.search(output)
                     if match:
                         url = match.group(2) or match.group(4)
-                        print(f"\n🌐 Opening {url} in browser...")
+                        print(f"\nOpening application in browser: {url}")
                         webbrowser.open(url)
                         self.url_opened = True
             if self.server_process.poll() is not None:
@@ -166,7 +166,7 @@ class ProjectSetup:
 
 if __name__ == "__main__":
     if not Path("input.txt").exists():
-        print("Error: input.txt not found")
+        print("Error: input.txt not found.")
         sys.exit(1)
 
     try:
@@ -174,9 +174,9 @@ if __name__ == "__main__":
         if setup.setup_project():
             sys.exit(0)
         else:
-            print("\n❌ Setup failed. Check error logs:")
+            print("\nProject setup failed. See error log:")
             print(f"-> {setup.error_log}")
             sys.exit(1)
     except KeyboardInterrupt:
-        print("\n⏹️ Operation cancelled by user")
+        print("\nOperation cancelled by user.")
         sys.exit(1)
